@@ -1,0 +1,114 @@
+import cyclone.web
+from twisted.python import log
+from web_utils import *
+from common import *
+from jwt_auth import jwtauth
+
+@jwtauth
+class NoticeBoardHandler(JsonHandler, MongoMixin):
+    SUPPORTED_METHODS = ("GET", "POST", "DELETE","PUT")
+    notices = MongoMixin.db.notices
+    entity = MongoMixin.db.entity
+    users = MongoMixin.db.users
+
+    @defer.inlineCallbacks
+    def post(self):
+        rs = yield self.users.find({"_id": ObjectId(self.uid)})
+        if len(rs):
+            print("Getting msg from db", rs[0]["role"])
+            if str(rs[0]["role"]) == "admin":
+                content = self.request.arguments
+                log.msg("content: %r" % content)
+                ent_id = rs[0]['entity_id']
+                yield self.notices.insert({"admin_id": ObjectId(self.uid), "entity_id": ent_id, "notice": content})
+                data = "notice inserted"
+		rcode = True
+            else:
+                print("user is not admin")
+                rcode = False
+                data = "user is not admin"
+        else:
+            print("else function calling")
+            data = "invalid user"
+	    rcode = False
+        resp = {"resp_code": rcode, "data": data}
+        self.write(resp)
+
+    @defer.inlineCallbacks
+    def get(self):
+        log.msg("data available")
+        rs = yield self.users.find({"_id": ObjectId(self.uid)})
+        if len(rs):
+            ent_id = rs[0]['entity_id']
+            dt = yield self.notices.find({"entity_id": ObjectId(ent_id)})
+            if len(dt):
+                v = dt[0]['notice']
+                data = v
+                rcode = True
+            else:
+                log.msg("data not available")
+                data = 'NULL'
+                rcode = False
+        else:
+            rcode = False
+            data = "User not found"
+        resp = {"resp_code": rcode, "data": data}
+        self.write(resp)
+
+    @defer.inlineCallbacks
+    def put(self):
+            rs = yield self.users.find({"_id": ObjectId(self.uid)})
+            print("Getting msg from db", rs[0]["role"])
+            if str(rs[0]["role"]) == "admin": notice_id = self.request.arguments['notice_id']
+            content = self.request.arguments['data']
+            log.msg("content: %r" % content)
+            rs = yield self.notice.find_and_modify(query = {"_id": ObjectId(notice_id)},
+            update = {{"$set": "notice":content}}
+                rcode = True: data = "update successfully"
+        else:
+                rcode = False data = "update failed"
+                resp ={"resp_code":rcode,"data":data}
+          self.write(resp)
+
+     @defer.inlineCallbacks
+     def delete(self):
+            admin_id = self.get_arguments('admin_id')
+            admin_id = admin_id[0]
+        rs = yield self.notice.find({"notice": "content"})
+        if len(rs):
+            rs=yield self.notice.remove({"_id": ObjectId(admin_id)})
+            filepath = path+str(admin_id)
+            shutil.rmtree(filepath)
+            log.msg("notece deleted")
+    if len(rs):
+            resp = {"resp_code": True, "data": "deleted successfully"}
+        else:
+            resp = {"resp_code": False, "data": "delete failed"}
+        self.write(resp)
+
+class imageUploadfileHandler(cyclone.web.RequestHandler):
+    SUPPORTED_METHODS = ("GET", "POST", "DELETE","PUT")
+
+    def post(self):
+        fileinfo = self.request.files['file'][0]
+        fname = fileinfo['filename']
+        filepath = '/home/'+getpass.getuser()+'/tracker/'
+        fh = open(filepath+fname, 'w')
+        fh.write(fileinfo['body'])
+        fh.close()
+        self.write({'result': 'success','filepath' : filepath})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

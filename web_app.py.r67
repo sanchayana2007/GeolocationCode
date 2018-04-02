@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+import os.path
+import sys
+from twisted.application import service, internet
+from twisted.python import log
+from twisted.internet import reactor, task, defer
+import cyclone.escape
+import cyclone.web
+import tornado.web
+from comp_server import *
+from web_utils import *
+from common import *
+from admin import *
+from loc_websocket import *
+from users import *
+from auth import *
+import getpass
+from devices import *
+from vehicles import *
+from otp_auth import *
+from entity import *
+from entity_info import *
+from realtime_status import *
+from notice import *
+
+class WebApplication(cyclone.web.Application):
+    def __init__(self, app):
+
+        stats = Stats()
+
+        handlers = [
+            (r"/", MainHandler, dict(stats=stats)),
+            (r"/api/chatsocket", LocationSocketHandler, dict(stats=stats)),
+            (r"/api/vehicle_location", LocationHandler),
+            (r"/api/user", UserHandler),
+            (r"/api/auth", LoginHandler),
+            (r"/api/otpauthinitiate", OtpAuthInitiateHandler),
+            (r"/api/otpauthvalidate", OtpAuthValidateHandler),
+            (r"/api/otp_auth_new_user", OtpAuthNewUserHandler),
+            (r"/api/otp_auth_validate_new_user", OtpAuthValidateNewUserHandler),
+            (r"/api/emergency_sms", EmergencyMessageHandler),
+            (r"/api/devices", DeviceHandler),
+            (r"/api/vehicles", VehicleHandler),
+            (r"/api/vehicle_status", VehicleStatusHandler),
+            (r"/api/entities", EntityHandler),
+            (r"/api/newuser", CreateUserHandler),
+            (r"/api/addvehicle", AddVehicleHandler),
+            (r"/api/changepassword", ChangeUserHandler),
+            (r"/api/currusers", CurrentUserDetailsHandler),
+            (r"/api/currentities", CurrentEntityDetailsHandler),
+            (r"/api/entity_vehicles", AllEntityVehicleDetailsHandler),
+            (r"/api/currdevices", CurrentDeviceDetailsHandler),
+            (r"/api/new_devices", NewDeviceDetailsHandler),
+            (r"/api/currvehicles", CurrentVehicleDetailsHandler),
+            (r"/api/upload_logo", EntityLogoUploadHandler),
+            (r"/api/admin", AdminHandler),
+	    (r"/api/entity_info", EntityInfoHandler),
+	    (r"/api/notice", NoticeBoardHandler),
+	    (r"/api/rt_vehicle_graph", RealTimeVehicleStatusHandler),
+	    (r"/api/rt_user_graph", RealTimeUserStatusHandler),
+	    (r"/api/rt_alarm_graph", RealTimeAlarmStatusHandler),
+	    (r"/api/subscribe_vehicle", VehcileSubscribeHandler),
+            (r"/(.*)", cyclone.web.StaticFileHandler, {"path": "static"}),
+        ]
+        settings = dict(
+            cookie_secret="43oETzKXQAGaYdkL5gEmGeJJFuYh7EQnp2XdTP1o/Vo=",
+            login_url="/static/login.html",
+            template_path=os.path.join(os.path.dirname(__file__), "static"),
+            static_path=os.path.join(os.path.dirname(__file__), "static"),
+            #ToDo: This has to be enabled for production system. Currently
+            #disabling it as it is creating issue with REST Clients
+            #xsrf_cookies=True,
+            xsrf_cookies=False,
+            autoescape=None,
+        )
+        # Connect to Redis.
+        RedisMixin.setup("127.0.0.1", 6379, 0, 10)
+
+        cyclone.web.Application.__init__(self, handlers, **settings)
+
+
+
+class MainHandler(BaseHandler):
+    def initialize(self, stats):
+        self.stats = stats
+
+    @cyclone.web.authenticated
+    def get(self):
+        self.stats.newVisit()
+        self.render("index.html", messages=ChatSocketHandler.cache)
+
+
+application = service.Application("xLayer Tracker")
+
+RedisMixin.setup("127.0.0.1", 6379, 0, 10)
+
+webapp = WebApplication(application)
+server = internet.TCPServer(7777, webapp, interface="0.0.0.0")
+server.setServiceParent(application)
